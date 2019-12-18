@@ -6,3 +6,5 @@ scalaVersion := "2.13.1"
 
 libraryDependencies += "org.apache.poi" % "poi" % "4.1.1"
 libraryDependencies += "org.apache.poi" % "poi-ooxml" % "4.1.1"
+
+libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.7"

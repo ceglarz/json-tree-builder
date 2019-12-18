@@ -5,6 +5,9 @@ import org.apache.poi.ss.usermodel.{CellType, Row, WorkbookFactory}
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 
+import org.json4s.DefaultFormats
+import org.json4s.native.Serialization.write
+
 case class TempNode(index: Int, id: Int, name: String, nestedLevel: Int, nodes: ListBuffer[TempNode], parentIndex: Int = 0)
 case class Node(id: Int, name: String, nodes: List[Node] = List())
 
@@ -15,6 +18,8 @@ object Main {
     val ID_ROW_INDEX: Int = 3
     val FILE: String = "test1.xlsx"
 
+    implicit val formats: DefaultFormats.type = DefaultFormats
+
     val fileAsStream = getClass.getClassLoader.getResourceAsStream(FILE)
     val workbook = WorkbookFactory.create(fileAsStream)
 
@@ -23,13 +28,13 @@ object Main {
     val isRowANode = (row: Row) => row.getCell(ID_ROW_INDEX).getCellType == CellType.NUMERIC
     val filteredRows = rows.filter(isRowANode)
     val tempNodesWithoutParent: List[TempNode] = filteredRows.zipWithIndex.map { case (row, index) => mapToTempNode(ID_ROW_INDEX, row, index) }
-    println(tempNodesWithoutParent)
-
     val tempNodesWithParent: List[TempNode] = findParent(tempNodesWithoutParent)
-    println(tempNodesWithParent)
 
     val nodes = createNodesList(tempNodesWithParent, List(), 3)
     println(nodes)
+
+    val jsonNodes = write(nodes)
+    println(jsonNodes)
   }
 
   def mapToTempNode(cellNum: Int, row: Row, index: Int): TempNode = {
@@ -73,7 +78,7 @@ object Main {
               val nodeChildren = children.filter(_.parentIndex == tempNode.index).map(tempNode => tempNode.id)
               Node(id = tempNode.id, name = tempNode.name, nodes = nodes.filter(node => nodeChildren.contains(node.id)))
             })
-          .filter(t => parents.filter(_.nestedLevel == level).map(tempNode => tempNode.id).contains(t.id))
+          .filter(t => parents.filter(_.nestedLevel <= level).map(tempNode => tempNode.id).contains(t.id))
         createNodesList(list, readyNodes, level - 1)
 
     }
