@@ -8,30 +8,26 @@ import scala.jdk.CollectionConverters._
 import org.json4s.DefaultFormats
 import org.json4s.native.Serialization.write
 
-case class TempNode(index: Int, id: Int, name: String, nestedLevel: Int, nodes: ListBuffer[TempNode], parentIndex: Int = 0)
+case class TempNode(index: Int, id: Int, name: String, nestedLevel: Int, nodes: ListBuffer[TempNode], parentIndex: Int = -1)
 case class Node(id: Int, name: String, nodes: List[Node] = List())
 
 object Main {
 
   def main(args: Array[String]): Unit = {
 
-    val ID_ROW_INDEX: Int = 3
-    val FILE: String = "test1.xlsx"
+    object Builder {
+      val ID_ROW_INDEX: Int = 3
+      val FILE: String = "test1.xlsx"
+      val NESTED_LEVELS_COUNT: Int = 3
+    }
 
     implicit val formats: DefaultFormats.type = DefaultFormats
 
-    val fileAsStream = getClass.getClassLoader.getResourceAsStream(FILE)
-    val workbook = WorkbookFactory.create(fileAsStream)
+    val rows = XlsxReader.getNodesRows(Builder.FILE, Builder.ID_ROW_INDEX)
 
-    val rows = workbook.getSheetAt(0).iterator().asScala.toList
-
-    val isRowANode = (row: Row) => row.getCell(ID_ROW_INDEX).getCellType == CellType.NUMERIC
-    val filteredRows = rows.filter(isRowANode)
-    val tempNodesWithoutParent: List[TempNode] = filteredRows.zipWithIndex.map { case (row, index) => mapToTempNode(ID_ROW_INDEX, row, index) }
-    val tempNodesWithParent: List[TempNode] = findParent(tempNodesWithoutParent)
-
-    val nodes = createNodesList(tempNodesWithParent, List(), 3)
-    println(nodes)
+    val tempNodesWithoutParent: List[TempNode] = rows.zipWithIndex.map { case (row, index) => mapToTempNode(Builder.ID_ROW_INDEX, row, index) }
+    val tempNodesWithParent: List[TempNode] = findParent(tempNodesWithoutParent, Builder.NESTED_LEVELS_COUNT)
+    val nodes = createNodesList(tempNodesWithParent, List(), Builder.NESTED_LEVELS_COUNT)
 
     val jsonNodes = write(nodes)
     println(jsonNodes)
@@ -47,12 +43,16 @@ object Main {
     val name = cellAndIndex._1.getStringCellValue
     val nestedLevel = cellAndIndex._2 + 1
 
-    TempNode(index + 2, id, name, nestedLevel, ListBuffer())
+    TempNode(index, id, name, nestedLevel, ListBuffer())
   }
 
-  def findParent(nodes: List[TempNode]): List[TempNode] = {
+  def findParent(nodes: List[TempNode], levels: Int): List[TempNode] = {
 
-    var lastLevelParentDictionary = Map(1 -> 0, 2 -> 0, 3 -> 0)
+    var lastLevelParentDictionary = Map(0 -> -1)
+    for (i <- 1 to levels) {
+      lastLevelParentDictionary = lastLevelParentDictionary + (i -> -1)
+    }
+
     val nodesWithParent: ListBuffer[TempNode] = ListBuffer()
 
     nodes.foreach { node => {
@@ -82,9 +82,5 @@ object Main {
         createNodesList(list, readyNodes, level - 1)
 
     }
-
-  def sortByIdDesc(node1: TempNode, node2: TempNode): Boolean = {
-    node1.id > node2.id
-  }
 
 }
