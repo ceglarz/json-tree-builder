@@ -1,86 +1,39 @@
 package pl.com.britenet.ceglarski.oskar
 
-import org.apache.poi.ss.usermodel.{CellType, Row, WorkbookFactory}
+import akka.actor.ActorSystem
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.server.Directives._
+import akka.stream.ActorMaterializer
+import net.liftweb.json.{DefaultFormats, Serialization}
+import ch.megard.akka.http.cors.scaladsl.CorsDirectives._
 
-import scala.collection.mutable.ListBuffer
-import scala.jdk.CollectionConverters._
-
-import org.json4s.DefaultFormats
-import org.json4s.native.Serialization.write
-
-case class TempNode(index: Int, id: Int, name: String, nestedLevel: Int, nodes: ListBuffer[TempNode], parentIndex: Int = -1)
-case class Node(id: Int, name: String, nodes: List[Node] = List())
+import scala.concurrent.ExecutionContextExecutor
+import scala.io.StdIn
 
 object Main {
-
   def main(args: Array[String]): Unit = {
+    implicit val system: ActorSystem = ActorSystem("tree-builder")
+    implicit val materializer: ActorMaterializer = ActorMaterializer()
+    implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
-    object Builder {
-      val ID_ROW_INDEX: Int = 3
-      val FILE: String = "test1.xlsx"
-      val NESTED_LEVELS_COUNT: Int = 3
-    }
+    val route = cors() {
+      path("") {
+        get {
+          val nodes: List[Node] = TreeBuilder.build()
 
-    implicit val formats: DefaultFormats.type = DefaultFormats
-
-    val rows = XlsxReader.getNodesRows(Builder.FILE, Builder.ID_ROW_INDEX)
-
-    val tempNodesWithoutParent: List[TempNode] = rows.zipWithIndex.map { case (row, index) => mapToTempNode(Builder.ID_ROW_INDEX, row, index) }
-    val tempNodesWithParent: List[TempNode] = findParent(tempNodesWithoutParent, Builder.NESTED_LEVELS_COUNT)
-    val nodes = createNodesList(tempNodesWithParent, List(), Builder.NESTED_LEVELS_COUNT)
-
-    val jsonNodes = write(nodes)
-    println(jsonNodes)
-  }
-
-  def mapToTempNode(cellNum: Int, row: Row, index: Int): TempNode = {
-    val id = row.getCell(cellNum).getNumericCellValue.intValue
-
-    val cellAndIndex = row.cellIterator().asScala.toList.zipWithIndex.find {
-      case (cell, _) => cell.getCellType == CellType.STRING
-    }.get
-
-    val name = cellAndIndex._1.getStringCellValue
-    val nestedLevel = cellAndIndex._2 + 1
-
-    TempNode(index, id, name, nestedLevel, ListBuffer())
-  }
-
-  def findParent(nodes: List[TempNode], levels: Int): List[TempNode] = {
-
-    var lastLevelParentDictionary = Map(0 -> -1)
-    for (i <- 1 to levels) {
-      lastLevelParentDictionary = lastLevelParentDictionary + (i -> -1)
-    }
-
-    val nodesWithParent: ListBuffer[TempNode] = ListBuffer()
-
-    nodes.foreach { node => {
-      if (node.index > lastLevelParentDictionary.getOrElse(node.nestedLevel, 0)) {
-        lastLevelParentDictionary = lastLevelParentDictionary + (node.nestedLevel -> node.index)
+          implicit val formats: DefaultFormats.type = DefaultFormats
+          complete(HttpEntity(ContentTypes.`application/json`, Serialization.writePretty(nodes)))
+        }
       }
-      val nodeWithParent = node.copy(parentIndex = lastLevelParentDictionary.getOrElse(node.nestedLevel - 1, 0))
-      nodesWithParent.addOne(nodeWithParent)
     }
-    }
-    nodesWithParent.toList
+
+    val bindingFuture = Http().bindAndHandle(route, "localhost", 8080)
+
+    println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
+    StdIn.readLine()
+    bindingFuture
+      .flatMap(_.unbind())
+      .onComplete(_ => system.terminate())
   }
-
-  def createNodesList(list: List[TempNode], nodes: List[Node], level: Int): List[Node] =
-    level match {
-      case 0 => nodes
-      case _ =>
-        val parents: List[TempNode] = list.filter(node => node.nestedLevel == level)
-        val children: List[TempNode] = list.filter(node => node.nestedLevel == level + 1)
-        val readyNodes = parents
-          .map(
-            tempNode => {
-              val nodeChildren = children.filter(_.parentIndex == tempNode.index).map(tempNode => tempNode.id)
-              Node(id = tempNode.id, name = tempNode.name, nodes = nodes.filter(node => nodeChildren.contains(node.id)))
-            })
-          .filter(t => parents.filter(_.nestedLevel <= level).map(tempNode => tempNode.id).contains(t.id))
-        createNodesList(list, readyNodes, level - 1)
-
-    }
-
 }

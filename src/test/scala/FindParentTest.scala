@@ -1,5 +1,5 @@
 import org.scalatest.funsuite.AnyFunSuite
-import pl.com.britenet.ceglarski.oskar.{Main, TempNode}
+import pl.com.britenet.ceglarski.oskar.{TreeBuilder, TempNode}
 
 import scala.collection.mutable.ListBuffer
 
@@ -14,7 +14,7 @@ class FindParentTest extends AnyFunSuite {
       )
 
     //when
-    val returnTempNodesList = Main.findParent(givenTempNodesList, 3)
+    val returnTempNodesList = TreeBuilder.findParent(givenTempNodesList, 3)
 
     val expectedTempNodesList = List(
       TempNode(0, 1, "A", 1, ListBuffer(), -1),
